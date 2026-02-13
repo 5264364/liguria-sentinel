@@ -1,0 +1,2 @@
+# liguria-sentinel
+monitorare bandi
