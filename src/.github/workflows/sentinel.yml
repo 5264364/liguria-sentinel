@@ -1,0 +1,30 @@
+name: Liguria Sentinel Bot
+
+on:
+  schedule:
+    # Esegui ogni 6 ore
+    - cron: '0 */6 * * *'
+  
+  # Permetti esecuzione manuale
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Scarica il codice
+      uses: actions/checkout@v3
+    
+    - name: Installa Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Installa librerie
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Esegui il bot
+      run: |
+        python src/scraper.py
