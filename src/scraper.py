@@ -1,9 +1,14 @@
-import os
-from datetime import datetime
-from database import Database
-from scrapers import get_all_scrapers
-from keywords import calcola_score, ha_keywords_negative, estrai_keywords_match
 import requests
+from bs4 import BeautifulSoup
+import hashlib
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time requests
 
 print("=" * 60)
 print("🚀 LIGURIA SENTINEL - Avvio Scansione")
