@@ -16,11 +16,6 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Installa Chrome
-      uses: browser-actions/setup-chrome@latest
-      with:
-        chrome-version: stable
-    
     - name: Installa dipendenze Python
       run: pip install -r requirements.txt
     
