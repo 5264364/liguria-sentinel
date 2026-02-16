@@ -1,224 +1,172 @@
+"""
+Liguria Sentinel Bot - Main Orchestrator
+Coordina tutti gli scraper e invia notifiche Telegram
+"""
+
+import os
+from database import Database
+from scrapers import ScraperFILSE
+from keywords import filtra_keywords, calcola_score, estrai_keywords_match
 import requests
-from bs4 import BeautifulSoup
-import hashlib
-from datetime import datetime
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time requests
+import time
 
-print("=" * 60)
-print("🚀 LIGURIA SENTINEL - Avvio Scansione")
-print("=" * 60)
-print(f"📅 Data/Ora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-print("")
-
-# Configurazione Telegram
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-
-# Inizializza database
-db = Database()
-
-def invia_telegram(messaggio):
-    """Invia messaggio su Telegram"""
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Token o Chat ID mancanti!")
-        return False
+def invia_notifica_telegram(bando, db):
+    """Invia notifica Telegram per un bando"""
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    dati = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": messaggio,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
+    if not token or not chat_id:
+        print("⚠️ Token o Chat ID Telegram non configurati")
+        return
+    
+    score = bando.get('score', 0)
+    
+    # Emoji rilevanza
+    if score >= 70:
+        emoji_score = "⭐⭐⭐⭐⭐"
+        priorita = "🔴 ALTA"
+    elif score >= 50:
+        emoji_score = "⭐⭐⭐⭐"
+        priorita = "🟡 MEDIA"
+    else:
+        emoji_score = "⭐⭐⭐"
+        priorita = "🟢 BASSA"
+    
+    messaggio = f"""
+🆕 NUOVO BANDO
+
+{bando['titolo']}
+
+🏢 Ente: {bando['ente']}
+📊 Rilevanza: {score}/100 {emoji_score}
+{priorita}
+
+🔗 {bando['url']}
+🏷️ Keywords: {bando.get('keywords_match', 'N/A')}
+"""
+    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': messaggio,
+        'parse_mode': 'HTML',
+        'disable_web_page_preview': True
     }
     
     try:
-        risposta = requests.post(url, json=dati, timeout=10)
-        if risposta.status_code == 200:
-            return True
+        response = requests.post(url, json=data, timeout=10)
+        if response.status_code == 200:
+            print(f"✅ Notifica inviata per: {bando['titolo'][:50]}...")
         else:
-            print(f"⚠️ Errore Telegram: {risposta.status_code}")
-            return False
+            print(f"⚠️ Errore invio notifica: {response.status_code}")
     except Exception as e:
-        print(f"❌ Errore invio Telegram: {e}")
-        return False
+        print(f"❌ Errore Telegram: {e}")
 
-def processa_bando(bando):
-    """
-    Processa un singolo bando:
-    1. Controlla se esiste già
-    2. Filtra con keywords
-    3. Calcola score
-    4. Salva se nuovo
-    5. Notifica se rilevante
-    """
-    
-    # Controlla se già esiste
-    if db.bando_esiste(bando['titolo'], bando['url']):
-        return None
-    
-    # Filtra keywords negative
-    testo_completo = f"{bando['titolo']} {bando.get('testo', '')}"
-    if ha_keywords_negative(testo_completo):
-        print(f"⏭️ Saltato (keyword negativa): {bando['titolo'][:50]}...")
-        return None
-    
-    # Calcola score
-    score = calcola_score(bando)
-    
-    # Estrai keywords match
-    keywords_trovate = estrai_keywords_match(testo_completo)
-    keywords_str = ",".join(keywords_trovate) if keywords_trovate else None
-    
-    # Salva nel database
-    bando_id = db.aggiungi_bando(
-        titolo=bando['titolo'],
-        url=bando['url'],
-        ente=bando['ente'],
-        tipo=bando.get('tipo'),
-        keywords=keywords_str
-    )
-    
-    if not bando_id:
-        return None
-    
-    # Se score >= 40, notifica
-    if score >= 40:
-        return {
-            'id': bando_id,
-            'bando': bando,
-            'score': score,
-            'keywords': keywords_trovate
-        }
-    else:
-        print(f"📊 Score basso ({score}): {bando['titolo'][:50]}...")
-        return None
 
-def formatta_notifica(risultato):
-    """Formatta il messaggio Telegram per un bando"""
-    bando = risultato['bando']
-    score = risultato['score']
-    keywords = risultato['keywords']
+def invia_riepilogo_telegram(totale_trovati, totale_nuovi, totale_db):
+    """Invia riepilogo finale"""
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     
-    # Determina priorità
-    if score >= 70:
-        priorita = "🔴 ALTA"
-        stelle = "⭐⭐⭐⭐⭐"
-    elif score >= 50:
-        priorita = "🟡 MEDIA"
-        stelle = "⭐⭐⭐"
-    else:
-        priorita = "🟢 BASSA"
-        stelle = "⭐"
+    if not token or not chat_id:
+        return
     
-    messaggio = f"""🆕 <b>NUOVO BANDO</b>
-
-<b>{bando['titolo']}</b>
-
-🏢 Ente: {bando['ente']}
-📊 Rilevanza: {score}/100 {stelle}
-{priorita}
-
-🔗 <a href="{bando['url']}">Vai al bando</a>
-
-🏷️ Keywords: {', '.join(keywords[:5]) if keywords else 'N/A'}"""
+    from datetime import datetime
+    ora = datetime.now().strftime("%d/%m/%Y %H:%M")
     
-    return messaggio
+    messaggio = f"""
+✅ Scansione Completata
+📅 {ora}
+🔍 Bandi analizzati: {totale_trovati}
+🆕 Nuovi bandi: {totale_nuovi}
+📊 Database: {totale_db} bandi totali
 
-# === ESECUZIONE PRINCIPALE ===
-
-try:
-    print("🔄 Inizio scansione siti...")
-    print("")
+Prossimo controllo tra 6 ore.
+"""
     
-    bandi_nuovi = []
-    totale_bandi_trovati = 0
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {
+        'chat_id': chat_id,
+        'text': messaggio
+    }
+    
+    try:
+        requests.post(url, json=data, timeout=10)
+    except:
+        pass
+
+
+def main():
+    """Main execution"""
+    print("=" * 60)
+    print("🤖 LIGURIA SENTINEL BOT")
+    print("=" * 60)
+    
+    # Inizializza database
+    db = Database()
+    
+    # Lista scrapers attivi
+    scrapers = [
+        ScraperFILSE(),
+        # ScraperALFA(),  # Attiva dopo
+        # ScraperRegione()  # Attiva dopo
+    ]
+    
+    totale_trovati = 0
+    totale_nuovi = 0
     
     # Esegui tutti gli scraper
-    scrapers = get_all_scrapers()
-    
     for scraper in scrapers:
         try:
             bandi = scraper.scrape()
-            totale_bandi_trovati += len(bandi)
+            totale_trovati += len(bandi)
             
-            # Registra controllo
-            db.registra_controllo(
-                sito=scraper.nome,
-                url=getattr(scraper, 'url_bandi', scraper.url),
-                esito="OK",
-                hash_pagina=None
-            )
-            
-            # Processa ogni bando
             for bando in bandi:
-                risultato = processa_bando(bando)
-                if risultato:
-                    bandi_nuovi.append(risultato)
+                # Controlla se esiste già
+                if db.bando_esiste(bando['url']):
+                    print(f"⏭️ Già presente: {bando['titolo'][:50]}...")
+                    continue
+                
+                # Filtra keywords negative
+                if not filtra_keywords(bando['titolo'], bando.get('testo', '')):
+                    print(f"❌ Filtrato (keyword negativa): {bando['titolo'][:50]}...")
+                    continue
+                
+                # Calcola score
+                score = calcola_score(bando)
+                bando['score'] = score
+                
+                # Estrai keywords match
+                keywords = estrai_keywords_match(bando['titolo'], bando.get('testo', ''))
+                bando['keywords_match'] = ', '.join(keywords) if keywords else None
+                
+                # Salva in database
+                db.salva_bando(bando)
+                totale_nuovi += 1
+                
+                print(f"💾 Salvato: {bando['titolo'][:50]}... (Score: {score})")
+                
+                # Invia notifica se score >= 40
+                if score >= 40:
+                    invia_notifica_telegram(bando, db)
         
         except Exception as e:
             print(f"❌ Errore scraper {scraper.nome}: {e}")
-            db.registra_controllo(
-                sito=scraper.nome,
-                url=getattr(scraper, 'url_bandi', scraper.url),
-                esito="ERRORE",
-                errore=str(e)
-            )
+            import traceback
+            traceback.print_exc()
     
-    print("")
-    print("=" * 60)
-    print("📊 RIEPILOGO SCANSIONE")
-    print("=" * 60)
-    print(f"🔍 Bandi analizzati: {totale_bandi_trovati}")
-    print(f"🆕 Bandi nuovi trovati: {len(bandi_nuovi)}")
-    print(f"📚 Totale bandi in DB: {db.conta_bandi()}")
-    
-    # Invia notifiche per bandi nuovi
-    if bandi_nuovi:
-        print("")
-        print(f"📱 Invio {len(bandi_nuovi)} notifiche Telegram...")
-        
-        for risultato in bandi_nuovi:
-            messaggio = formatta_notifica(risultato)
-            if invia_telegram(messaggio):
-                print(f"✅ Notificato: {risultato['bando']['titolo'][:50]}...")
-            else:
-                print(f"⚠️ Errore notifica: {risultato['bando']['titolo'][:50]}...")
-    else:
-        # Nessun bando nuovo - messaggio riepilogativo
-        stats = db.statistiche()
-        
-        msg_riepilogo = f"""✅ <b>Scansione Completata</b>
-
-📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}
-
-🔍 Bandi analizzati: {totale_bandi_trovati}
-🆕 Nessun bando nuovo
-
-📊 Database: {db.conta_bandi()} bandi totali
-
-Prossimo controllo tra 6 ore."""
-        
-        # Invia solo se è la prima esecuzione o ogni 24h
-        # (per non spammare "nessun bando nuovo" ogni 6 ore)
-        if db.conta_bandi() == 0:
-            invia_telegram(msg_riepilogo)
-    
-    print("")
-    print("=" * 60)
-    print("✅ Esecuzione completata con successo!")
-    print("=" * 60)
-
-except Exception as e:
-    print("")
-    print("=" * 60)
-    print(f"❌ ERRORE CRITICO: {e}")
+    # Riepilogo finale
+    totale_db = db.conta_bandi()
+    print("\n" + "=" * 60)
+    print(f"✅ Scansione completata!")
+    print(f"🔍 Bandi trovati: {totale_trovati}")
+    print(f"🆕 Nuovi bandi: {totale_nuovi}")
+    print(f"📊 Totale database: {totale_db}")
     print("=" * 60)
     
-    # Notifica errore
-    invia_telegram(f"❌ <b>ERRORE nel bot</b>\n\n{str(e)[:200]}")
+    # Invia riepilogo Telegram
+    invia_riepilogo_telegram(totale_trovati, totale_nuovi, totale_db)
+
+
+if __name__ == "__main__":
+    main()
