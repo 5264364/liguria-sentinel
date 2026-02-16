@@ -4,20 +4,19 @@ import hashlib
 from datetime import datetime
 
 class ScraperFILSE:
-    """Scraper per FILSE"""
+    """Scraper per FILSE - Usa API alternativa"""
     
     def __init__(self):
         self.nome = "FILSE"
         self.url_base = "https://www.filse.it"
-        self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/bandi-attivi/"
+        # Usiamo la pagina aggiornamenti che è HTML statico
+        self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/aggiornamenti.html"
         self.url = self.url_bandi
     
     def scrape(self):
         """
-        Scarica e parse la pagina bandi FILSE
-        
-        Returns:
-            list: Lista di dizionari con i bandi trovati
+        Scarica bandi da FILSE aggiornamenti
+        (pagina più semplice senza JS)
         """
         bandi = []
         
@@ -36,37 +35,41 @@ class ScraperFILSE:
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # FILSE ha una struttura con articoli
-            articoli = soup.find_all('article', class_='item-list')
+            # Cerca tutti i link e titoli nella pagina aggiornamenti
+            contenuto = soup.find('div', class_='item-page') or soup.find('main') or soup.find('article')
             
-            if not articoli:
-                # Prova struttura alternativa
-                articoli = soup.find_all('div', class_='view-content')
+            if not contenuto:
+                print(f"⚠️ {self.nome} - Struttura pagina non trovata")
+                return []
             
-            print(f"📄 Trovati {len(articoli)} elementi in {self.nome}")
+            # Trova tutti i paragrafi e link
+            elementi = contenuto.find_all(['p', 'div', 'h2', 'h3', 'h4'])
             
-            for articolo in articoli[:10]:  # Max 10 per test
+            print(f"📄 Trovati {len(elementi)} elementi in {self.nome}")
+            
+            for elem in elementi:
                 try:
-                    # Estrai titolo
-                    titolo_elem = articolo.find('h2') or articolo.find('h3') or articolo.find('a')
-                    if not titolo_elem:
+                    # Cerca link dentro l'elemento
+                    link = elem.find('a')
+                    if not link:
                         continue
                     
-                    titolo = titolo_elem.get_text(strip=True)
+                    titolo = link.get_text(strip=True)
+                    url = link.get('href', '')
                     
-                    # Estrai link
-                    link_elem = articolo.find('a')
-                    if not link_elem:
+                    if not titolo or len(titolo) < 10:
                         continue
                     
-                    url = link_elem.get('href', '')
                     if url and not url.startswith('http'):
                         url = self.url_base + url
                     
-                    # Estrai testo descrittivo
-                    testo = articolo.get_text(strip=True)
-                    
-                    if titolo and url:
+                    # Filtra solo cose che sembrano bandi
+                    parole_chiave = ['bando', 'avviso', 'contributo', 'finanziamento', 'voucher', 'fondo']
+                    if any(parola in titolo.lower() for parola in parole_chiave):
+                        
+                        # Estrai testo intorno
+                        testo = elem.get_text(strip=True)
+                        
                         bando = {
                             'titolo': titolo,
                             'url': url,
@@ -78,7 +81,6 @@ class ScraperFILSE:
                         bandi.append(bando)
                 
                 except Exception as e:
-                    print(f"⚠️ Errore parsing elemento: {e}")
                     continue
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
