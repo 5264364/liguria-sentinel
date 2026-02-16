@@ -17,7 +17,7 @@ import time
 
 
 class ScraperFILSE:
-    """Scraper per FILSE - Versione DEFINITIVA con Selenium"""
+    """Scraper per FILSE - Versione DEBUG"""
     
     def __init__(self):
         self.nome = "FILSE"
@@ -26,10 +26,7 @@ class ScraperFILSE:
         self.url = self.url_bandi
     
     def scrape(self):
-        """
-        Scarica bandi da FILSE usando Selenium
-        per gestire il caricamento JavaScript
-        """
+        """Scarica bandi da FILSE usando Selenium"""
         bandi = []
         driver = None
         
@@ -52,84 +49,99 @@ class ScraperFILSE:
             print(f"📡 Caricamento pagina...")
             driver.get(self.url_bandi)
             
-            # Aspetta che la pagina carichi (fino a 10 secondi)
-            time.sleep(5)
+            # Aspetta MOLTO di più - 15 secondi
+            print("⏳ Attendo 15 secondi per caricamento JavaScript...")
+            time.sleep(15)
             
-            # Ottieni l'HTML completo dopo che JS ha caricato tutto
+            # Scroll in fondo per triggerare lazy loading
+            print("📜 Scroll della pagina...")
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(3)
+            
+            # Ottieni l'HTML completo
             html = driver.page_source
             
-            # Ora parsa l'HTML con BeautifulSoup
+            # SALVA HTML per debug
+            print("💾 Salvo HTML completo per debug...")
+            with open('/tmp/filse_debug.html', 'w', encoding='utf-8') as f:
+                f.write(html)
+            print(f"📄 HTML salvato ({len(html)} caratteri)")
+            
+            # Parsa con BeautifulSoup
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Cerca i bandi - FILSE usa diverse strutture possibili
-            articoli = (
-                soup.find_all('div', class_='public-competition-item') or
-                soup.find_all('article', class_='item') or
-                soup.find_all('div', class_='item-list') or
-                soup.find_all('div', class_=['competition-item', 'bando-item']) or
-                soup.find_all('article') or
-                soup.find_all('div', class_='item')
-            )
+            # MEGA DEBUG - Stampa TUTTE le classi presenti
+            print("\n🔍 DEBUG - Prime 50 classi CSS trovate nella pagina:")
+            tutti_elementi = soup.find_all(True, class_=True)  # Tutti gli elementi con classe
+            classi_uniche = set()
+            for elem in tutti_elementi[:200]:
+                classi = elem.get('class', [])
+                for c in classi:
+                    classi_uniche.add(c)
             
-            print(f"📄 Trovati {len(articoli)} elementi in {self.nome}")
+            for i, classe in enumerate(sorted(classi_uniche)[:50]):
+                print(f"  {i+1}. {classe}")
             
-            # Se non troviamo articoli, stampa l'HTML per debug
-            if len(articoli) == 0:
-                print("⚠️ Nessun articolo trovato. Debug HTML:")
-                # Cerca tutti i div con classe che contiene "item"
-                tutti_div = soup.find_all('div', class_=True)
-                classi_trovate = set()
-                for div in tutti_div[:20]:  # Prime 20 per non spammare
-                    classi = div.get('class', [])
-                    for c in classi:
-                        if 'item' in c.lower() or 'bando' in c.lower() or 'competition' in c.lower():
-                            classi_trovate.add(c)
-                print(f"Classi rilevanti trovate: {classi_trovate}")
+            print(f"\n📊 Totale classi uniche trovate: {len(classi_uniche)}")
             
-            for articolo in articoli:
+            # Cerca TUTTI gli <a> (link)
+            tutti_link = soup.find_all('a', href=True)
+            print(f"\n🔗 Trovati {len(tutti_link)} link nella pagina")
+            
+            # Mostra i primi 10 link
+            print("\n🔗 Primi 10 link:")
+            for i, link in enumerate(tutti_link[:10]):
+                href = link.get('href', '')
+                testo = link.get_text(strip=True)[:60]
+                print(f"  {i+1}. {testo} → {href[:80]}")
+            
+            # Cerca pattern comuni per bandi
+            print("\n🎯 Cerco pattern comuni...")
+            
+            # Pattern 1: Qualsiasi div o article con testo lungo
+            elementi_grandi = soup.find_all(['div', 'article'], recursive=True)
+            candidati = []
+            for elem in elementi_grandi:
+                testo = elem.get_text(strip=True)
+                # Se ha più di 50 caratteri e contiene un link, potrebbe essere un bando
+                if len(testo) > 50 and elem.find('a'):
+                    candidati.append(elem)
+            
+            print(f"📦 Trovati {len(candidati)} elementi candidati (con testo > 50 char e link)")
+            
+            # Processa i candidati
+            for i, elem in enumerate(candidati[:10]):  # Max 10 per debug
                 try:
-                    # Cerca titolo
-                    titolo_elem = (
-                        articolo.find('h2') or 
-                        articolo.find('h3') or 
-                        articolo.find('h4') or
-                        articolo.find('a', class_=['title', 'titolo'])
-                    )
-                    
-                    if not titolo_elem:
+                    link = elem.find('a')
+                    if not link:
                         continue
                     
-                    titolo = titolo_elem.get_text(strip=True)
+                    titolo = link.get_text(strip=True)
+                    url = link.get('href', '')
                     
-                    # Cerca link
-                    link_elem = articolo.find('a')
-                    if not link_elem:
+                    if not url or len(titolo) < 10:
                         continue
                     
-                    url = link_elem.get('href', '')
-                    if url and not url.startswith('http'):
+                    if not url.startswith('http'):
                         url = self.url_base + url
                     
-                    # Estrai tutto il testo
-                    testo = articolo.get_text(strip=True)
+                    testo = elem.get_text(strip=True)
                     
-                    if titolo and url and len(titolo) > 10:
-                        bando = {
-                            'titolo': titolo,
-                            'url': url,
-                            'ente': self.nome,
-                            'testo': testo,
-                            'tipo': 'bando',
-                            'data_trovato': datetime.now().isoformat()
-                        }
-                        bandi.append(bando)
-                        print(f"  ✓ {titolo[:60]}...")
+                    bando = {
+                        'titolo': titolo,
+                        'url': url,
+                        'ente': self.nome,
+                        'testo': testo,
+                        'tipo': 'bando',
+                        'data_trovato': datetime.now().isoformat()
+                    }
+                    bandi.append(bando)
+                    print(f"  ✓ Candidato {i+1}: {titolo[:60]}...")
                 
                 except Exception as e:
-                    print(f"⚠️ Errore parsing elemento: {e}")
                     continue
             
-            print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
+            print(f"\n✅ {self.nome}: {len(bandi)} bandi estratti")
             
         except Exception as e:
             print(f"❌ Errore {self.nome}: {e}")
@@ -137,12 +149,10 @@ class ScraperFILSE:
             traceback.print_exc()
         
         finally:
-            # Chiudi sempre il browser
             if driver:
                 driver.quit()
         
         return bandi
-
 
 class ScraperALFA:
     """Scraper per ALFA Liguria"""
