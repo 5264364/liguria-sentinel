@@ -5,7 +5,7 @@ Coordina tutti gli scraper e invia notifiche Telegram
 
 import os
 from database import Database
-from scrapers import ScraperFILSE
+from scrapers import ScraperFILSEPrivati, ScraperFILSEImprese
 from keywords import filtra_keywords, calcola_score, estrai_keywords_match
 import requests
 import time
