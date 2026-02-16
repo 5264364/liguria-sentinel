@@ -107,7 +107,8 @@ def main():
     
     # Lista scrapers attivi
     scrapers = [
-        ScraperFILSE(),
+        ScraperFILSEPrivati(),
+        ScraperFILSEImprese(),
         # ScraperALFA(),  # Attiva dopo
         # ScraperRegione()  # Attiva dopo
     ]
