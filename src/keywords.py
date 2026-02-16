@@ -1,114 +1,132 @@
-# Keywords dal PRD - Sistema di filtraggio intelligente
+"""
+Sistema di keywords e scoring per filtrare i bandi
+"""
 
+# Keywords positive con peso
 KEYWORDS_POSITIVE = {
-    # Tua attività core
-    "formazione": 20,
-    "corsi": 15,
-    "accreditamento": 20,
-    "ente formativo": 20,
-    "FSE": 15,
-    "PNRR formazione": 15,
-    "formatore": 10,
-    "docente": 10,
-    
-    # Settori clienti
-    "turismo": 15,
-    "hospitality": 15,
-    "hotel": 10,
-    "ristorazione": 10,
-    "bed and breakfast": 10,
-    "B&B": 10,
-    "agriturismo": 10,
-    
-    # Tipo agevolazioni
-    "voucher": 10,
-    "contributo a fondo perduto": 15,
-    "partita IVA": 10,
-    "micro impresa": 10,
-    "forfettari": 15,
-    "piccola impresa": 10,
-    
-    # Immobili e concessioni
-    "concessione demaniale": 15,
-    "stabilimento balneare": 10,
-    "manifestazione di interesse": 10,
-    "gestione immobile": 10,
-    "chiosco bar": 10,
-    "valorizzazione patrimonio": 10,
+    'formazione': 20,
+    'accreditamento': 20,
+    'FSE': 15,
+    'fondo sociale europeo': 15,
+    'turismo': 15,
+    'hotel': 10,
+    'albergo': 10,
+    'ristorazione': 10,
+    'ristorante': 10,
+    'voucher': 10,
+    'contributo a fondo perduto': 15,
+    'fondo perduto': 15,
+    'concessione demaniale': 15,
+    'demanio': 10,
+    'spiaggia': 10,
+    'stabilimento balneare': 15,
+    'manifestazione di interesse': 10,
+    'manifestazione interesse': 10,
+    'innovazione': 10,
+    'digitale': 8,
+    'digitalizzazione': 10,
+    'startup': 10,
+    'impresa': 8,
+    'PMI': 10,
+    'piccola media impresa': 10,
+    'sviluppo': 8,
+    'investimento': 10,
 }
 
+# Keywords negative (escludono automaticamente)
 KEYWORDS_NEGATIVE = [
-    "esiti",
-    "graduatoria definitiva",
-    "graduatoria finale",
-    "nomina commissione",
-    "appalto lavori",
-    "gara d'appalto forniture",
-    "esclusivamente enti pubblici",
-    "riservato dipendenti",
+    'esiti',
+    'graduatoria definitiva',
+    'graduatoria provvisoria',
+    'nomina commissione',
+    'commissione giudicatrice',
+    'appalto lavori',
+    'lavori pubblici',
+    'gara d\'appalto',
+    'aggiudicazione',
+    'verbale',
+    'rettifica graduatoria',
 ]
 
-ENTI_PRIORITARI = ["FILSE", "ALFA", "Regione Liguria", "Comune Genova"]
 
-def calcola_score(bando_dict):
+def filtra_keywords(titolo, testo=''):
     """
-    Calcola score di rilevanza 0-100
-    
-    Args:
-        bando_dict: dizionario con chiavi: titolo, testo, ente, scadenza, budget
-    
-    Returns:
-        int: Score 0-100
+    Filtra i bandi con keywords negative
+    Ritorna True se il bando è OK, False se deve essere scartato
     """
-    score = 0
-    testo_completo = f"{bando_dict.get('titolo', '')} {bando_dict.get('testo', '')}".lower()
+    contenuto = (titolo + ' ' + testo).lower()
     
-    # 1. Match keywords (max 50 punti)
-    for keyword, punti in KEYWORDS_POSITIVE.items():
-        if keyword.lower() in testo_completo:
-            score += punti
-    
-    score = min(score, 50)  # Cap a 50
-    
-    # 2. Ente prioritario (max 20 punti)
-    if bando_dict.get('ente') in ENTI_PRIORITARI:
-        score += 20
-    
-    # 3. Tempistiche ragionevoli (max 15 punti)
-    giorni_mancanti = bando_dict.get('giorni_scadenza', 0)
-    if giorni_mancanti >= 30:
-        score += 15
-    elif giorni_mancanti >= 15:
-        score += 10
-    elif giorni_mancanti >= 7:
-        score += 5
-    
-    # 4. Budget significativo (max 15 punti)
-    budget = bando_dict.get('budget', 0)
-    if budget >= 1000000:
-        score += 15
-    elif budget >= 500000:
-        score += 10
-    elif budget >= 100000:
-        score += 5
-    
-    return min(score, 100)
-
-def ha_keywords_negative(testo):
-    """Controlla se il testo contiene keywords negative"""
-    testo_lower = testo.lower()
     for keyword in KEYWORDS_NEGATIVE:
-        if keyword.lower() in testo_lower:
-            return True
-    return False
+        if keyword.lower() in contenuto:
+            return False
+    
+    return True
 
-def estrai_keywords_match(testo):
-    """Ritorna lista keywords trovate nel testo"""
+
+def estrai_keywords_match(titolo, testo=''):
+    """
+    Estrae le keywords positive trovate nel bando
+    Ritorna una lista di keywords
+    """
+    contenuto = (titolo + ' ' + testo).lower()
     keywords_trovate = []
-    testo_lower = testo.lower()
     
     for keyword in KEYWORDS_POSITIVE.keys():
-        if keyword.lower() in testo_lower:
+        if keyword.lower() in contenuto:
             keywords_trovate.append(keyword)
     
     return keywords_trovate
+
+
+def calcola_score(bando):
+    """
+    Calcola uno score 0-100 in base a:
+    1. Keywords match (max 50 punti)
+    2. Ente prioritario (max 20 punti)
+    3. Scadenza ragionevole (max 15 punti)
+    4. Budget significativo (max 15 punti)
+    """
+    score = 0
+    
+    titolo = bando.get('titolo', '').lower()
+    testo = bando.get('testo', '').lower()
+    ente = bando.get('ente', '').lower()
+    contenuto = titolo + ' ' + testo
+    
+    # 1. Keywords match (max 50 punti)
+    for keyword, peso in KEYWORDS_POSITIVE.items():
+        if keyword.lower() in contenuto:
+            score += peso
+    
+    # Cap a 50 punti
+    if score > 50:
+        score = 50
+    
+    # 2. Ente prioritario (+20 punti)
+    enti_prioritari = ['filse', 'alfa', 'regione liguria']
+    for ente_prioritario in enti_prioritari:
+        if ente_prioritario in ente:
+            score += 20
+            break
+    
+    # 3. Scadenza ragionevole (+15 punti)
+    # TODO: implementare parsing data scadenza
+    # Per ora diamo punti di default
+    score += 10
+    
+    # 4. Budget significativo (+15 punti)
+    # Cerca importi nel testo
+    if '€' in contenuto or 'euro' in contenuto:
+        # Cerca pattern tipo "1.000.000" o "1000000"
+        if '1.000.000' in contenuto or '1000000' in contenuto or 'milione' in contenuto:
+            score += 15
+        elif '500.000' in contenuto or '500000' in contenuto:
+            score += 10
+        else:
+            score += 5
+    
+    # Assicura che lo score sia tra 0 e 100
+    if score > 100:
+        score = 100
+    
+    return score
