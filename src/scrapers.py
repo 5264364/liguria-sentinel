@@ -7,152 +7,177 @@ import requests
 from bs4 import BeautifulSoup
 import hashlib
 from datetime import datetime
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
+import re
 
 
-class ScraperFILSE:
-    """Scraper per FILSE - Versione DEBUG"""
+class ScraperFILSEPrivati:
+    """Scraper per FILSE Bandi Online - Privati"""
     
     def __init__(self):
-        self.nome = "FILSE"
-        self.url_base = "https://www.filse.it"
-        self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/bandi-attivi/publiccompetitions/"
-        self.url = self.url_bandi
+        self.nome = "FILSE Privati"
+        self.url_base = "https://bandifilse.regione.liguria.it"
+        self.url_bandi = "https://bandifilse.regione.liguria.it/"
     
     def scrape(self):
-        """Scarica bandi da FILSE usando Selenium"""
+        """Scarica bandi per privati da FILSE"""
         bandi = []
-        driver = None
         
         try:
-            print(f"🔍 Scansione {self.nome} con Selenium...")
+            print(f"🔍 Scansione {self.nome}...")
             
-            # Configura Chrome in modalità headless
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
             
-            # Avvia il browser
-            driver = webdriver.Chrome(options=chrome_options)
+            response = requests.get(self.url_bandi, headers=headers, timeout=15)
             
-            # Vai alla pagina
-            print(f"📡 Caricamento pagina...")
-            driver.get(self.url_bandi)
+            if response.status_code != 200:
+                print(f"⚠️ {self.nome} - Status: {response.status_code}")
+                return []
             
-            # Aspetta MOLTO di più - 15 secondi
-            print("⏳ Attendo 15 secondi per caricamento JavaScript...")
-            time.sleep(15)
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Scroll in fondo per triggerare lazy loading
-            print("📜 Scroll della pagina...")
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3)
+            # Cerca tutti gli elementi che contengono bandi
+            # La pagina ha liste puntate e paragrafi con nomi di bandi
+            testo_completo = soup.get_text()
             
-            # Ottieni l'HTML completo
-            html = driver.page_source
+            # Lista bandi trovati nel testo
+            bandi_noti = [
+                "Nidi Gratis",
+                "Specializzarsi per competere",
+                "attività sportive",
+                "bonus badanti",
+                "baby sitter",
+                "Swim and go",
+                "Progetto di Vita",
+                "Voucher Centri Estivi",
+                "Fondo di garanzia",
+                "Dote Sport"
+            ]
             
-            # SALVA HTML per debug
-            print("💾 Salvo HTML completo per debug...")
-            with open('/tmp/filse_debug.html', 'w', encoding='utf-8') as f:
-                f.write(html)
-            print(f"📄 HTML salvato ({len(html)} caratteri)")
+            # Cerca liste <li> o <p> che contengono i nomi dei bandi
+            elementi = soup.find_all(['li', 'p', 'div'])
             
-            # Parsa con BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # MEGA DEBUG - Stampa TUTTE le classi presenti
-            print("\n🔍 DEBUG - Prime 50 classi CSS trovate nella pagina:")
-            tutti_elementi = soup.find_all(True, class_=True)  # Tutti gli elementi con classe
-            classi_uniche = set()
-            for elem in tutti_elementi[:200]:
-                classi = elem.get('class', [])
-                for c in classi:
-                    classi_uniche.add(c)
-            
-            for i, classe in enumerate(sorted(classi_uniche)[:50]):
-                print(f"  {i+1}. {classe}")
-            
-            print(f"\n📊 Totale classi uniche trovate: {len(classi_uniche)}")
-            
-            # Cerca TUTTI gli <a> (link)
-            tutti_link = soup.find_all('a', href=True)
-            print(f"\n🔗 Trovati {len(tutti_link)} link nella pagina")
-            
-            # Mostra i primi 10 link
-            print("\n🔗 Primi 10 link:")
-            for i, link in enumerate(tutti_link[:10]):
-                href = link.get('href', '')
-                testo = link.get_text(strip=True)[:60]
-                print(f"  {i+1}. {testo} → {href[:80]}")
-            
-            # Cerca pattern comuni per bandi
-            print("\n🎯 Cerco pattern comuni...")
-            
-            # Pattern 1: Qualsiasi div o article con testo lungo
-            elementi_grandi = soup.find_all(['div', 'article'], recursive=True)
-            candidati = []
-            for elem in elementi_grandi:
+            for elem in elementi:
                 testo = elem.get_text(strip=True)
-                # Se ha più di 50 caratteri e contiene un link, potrebbe essere un bando
-                if len(testo) > 50 and elem.find('a'):
-                    candidati.append(elem)
-            
-            print(f"📦 Trovati {len(candidati)} elementi candidati (con testo > 50 char e link)")
-            
-            # Processa i candidati
-            for i, elem in enumerate(candidati[:10]):  # Max 10 per debug
-                try:
-                    link = elem.find('a')
-                    if not link:
-                        continue
-                    
-                    titolo = link.get_text(strip=True)
-                    url = link.get('href', '')
-                    
-                    if not url or len(titolo) < 10:
-                        continue
-                    
-                    if not url.startswith('http'):
-                        url = self.url_base + url
-                    
-                    testo = elem.get_text(strip=True)
-                    
-                    bando = {
-                        'titolo': titolo,
-                        'url': url,
-                        'ente': self.nome,
-                        'testo': testo,
-                        'tipo': 'bando',
-                        'data_trovato': datetime.now().isoformat()
-                    }
-                    bandi.append(bando)
-                    print(f"  ✓ Candidato {i+1}: {titolo[:60]}...")
                 
-                except Exception as e:
-                    continue
+                # Se il testo contiene uno dei bandi noti
+                for bando_nome in bandi_noti:
+                    if bando_nome.lower() in testo.lower() and len(testo) > 15:
+                        # Cerca un link associato
+                        link = elem.find('a')
+                        url = self.url_bandi  # Default alla home se non c'è link specifico
+                        
+                        if link:
+                            href = link.get('href', '')
+                            if href.startswith('http'):
+                                url = href
+                            elif href:
+                                url = self.url_base + href
+                        
+                        # Usa il testo come titolo
+                        titolo = testo[:200] if len(testo) <= 200 else testo[:200] + "..."
+                        
+                        bando = {
+                            'titolo': titolo,
+                            'url': url,
+                            'ente': self.nome,
+                            'testo': testo,
+                            'tipo': 'bando',
+                            'data_trovato': datetime.now().isoformat()
+                        }
+                        
+                        # Evita duplicati nella stessa scansione
+                        if not any(b['titolo'] == titolo for b in bandi):
+                            bandi.append(bando)
+                            print(f"  ✓ {titolo[:60]}...")
+                        break
             
-            print(f"\n✅ {self.nome}: {len(bandi)} bandi estratti")
+            print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
             
         except Exception as e:
             print(f"❌ Errore {self.nome}: {e}")
             import traceback
             traceback.print_exc()
         
-        finally:
-            if driver:
-                driver.quit()
+        return bandi
+
+
+class ScraperFILSEImprese:
+    """Scraper per FILSE Bandi Online - Imprese ed Enti"""
+    
+    def __init__(self):
+        self.nome = "FILSE Imprese"
+        self.url_base = "https://filseonline.regione.liguria.it"
+        self.url_bandi = "https://filseonline.regione.liguria.it/FilseWeb/Home.do"
+    
+    def scrape(self):
+        """Scarica bandi per imprese da FILSE"""
+        bandi = []
+        
+        try:
+            print(f"🔍 Scansione {self.nome}...")
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                print(f"⚠️ {self.nome} - Status: {response.status_code}")
+                return []
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Cerca la sezione "Bandi attivi"
+            testo_completo = soup.get_text()
+            
+            # Ogni bando è in grassetto seguito da date
+            # Cerchiamo tutti gli elementi in grassetto <strong> o <b>
+            elementi_bold = soup.find_all(['strong', 'b'])
+            
+            for elem in elementi_bold:
+                titolo = elem.get_text(strip=True)
+                
+                # Filtra solo titoli lunghi (probabilmente bandi)
+                if len(titolo) < 30:
+                    continue
+                
+                # Cerca date nel testo successivo
+                parent = elem.parent
+                if parent:
+                    testo_parent = parent.get_text(strip=True)
+                    
+                    # Cerca pattern "dal XX-XX-XXXX al XX-XX-XXXX"
+                    match_date = re.search(r'dal\s+(\d{2}-\d{2}-\d{4})\s+al\s+(\d{2}-\d{2}-\d{4})', testo_parent)
+                    
+                    if match_date:
+                        data_inizio = match_date.group(1)
+                        data_fine = match_date.group(2)
+                        
+                        bando = {
+                            'titolo': titolo,
+                            'url': self.url_bandi,
+                            'ente': self.nome,
+                            'testo': f"Domande dal {data_inizio} al {data_fine}. {testo_parent[:300]}",
+                            'tipo': 'bando',
+                            'data_scadenza': data_fine,
+                            'data_trovato': datetime.now().isoformat()
+                        }
+                        
+                        bandi.append(bando)
+                        print(f"  ✓ {titolo[:60]}... (scade {data_fine})")
+            
+            print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
+            
+        except Exception as e:
+            print(f"❌ Errore {self.nome}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return bandi
+
 
 class ScraperALFA:
     """Scraper per ALFA Liguria"""
