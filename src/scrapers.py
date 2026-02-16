@@ -1,9 +1,20 @@
+"""
+Scrapers per diverse fonti di bandi
+Ogni scraper è una classe che implementa il metodo scrape()
+"""
+
 import requests
 from bs4 import BeautifulSoup
 import hashlib
 from datetime import datetime
-from playwright.sync_api import sync_playwright
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
+
 
 class ScraperFILSE:
     """Scraper per FILSE - Versione DEFINITIVA con Selenium"""
@@ -131,37 +142,31 @@ class ScraperFILSE:
                 driver.quit()
         
         return bandi
-        
+
+
 class ScraperALFA:
-    """Scraper per ALFA - Da implementare"""
+    """Scraper per ALFA Liguria"""
     
     def __init__(self):
         self.nome = "ALFA"
-        self.url = "https://www.alfaliguria.it/"
+        self.url_base = "https://www.alfaliguria.it"
+        self.url_bandi = "https://www.alfaliguria.it/"
     
     def scrape(self):
-        """TODO: Implementare dopo test FILSE"""
-        print(f"⏭️ {self.nome} - Da implementare")
+        """Placeholder - da implementare"""
+        print(f"⏭️ {self.nome} - Non ancora implementato")
         return []
 
 
 class ScraperRegione:
-    """Scraper per Regione Liguria - Da implementare"""
+    """Scraper per Regione Liguria"""
     
     def __init__(self):
         self.nome = "Regione Liguria"
-        self.url = "https://www.regione.liguria.it/homepage-bandi-e-avvisi"
+        self.url_base = "https://www.regione.liguria.it"
+        self.url_bandi = "https://www.regione.liguria.it/homepage-bandi-e-avvisi"
     
     def scrape(self):
-        """TODO: Implementare dopo test FILSE"""
-        print(f"⏭️ {self.nome} - Da implementare")
+        """Placeholder - da implementare"""
+        print(f"⏭️ {self.nome} - Non ancora implementato")
         return []
-
-
-def get_all_scrapers():
-    """Ritorna lista di tutti gli scraper attivi"""
-    return [
-        ScraperFILSE(),
-        # ScraperALFA(),  # Commentato, da attivare dopo
-        # ScraperRegione(),  # Commentato, da attivare dopo
-    ]
