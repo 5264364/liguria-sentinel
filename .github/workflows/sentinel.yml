@@ -16,15 +16,16 @@ jobs:
       with:
         python-version: '3.11'
     
-    - run: pip install -r requirements.txt
+    - name: Installa dipendenze Python
+      run: pip install -r requirements.txt
     
-    - run: playwright install chromium
-      name: Installa browser Playwright
+    - name: Installa Playwright e browser
+      run: |
+        playwright install chromium
+        playwright install-deps chromium
     
-    - run: playwright install-deps
-      name: Installa dipendenze browser
-    
-    - run: python src/scraper.py
+    - name: Esegui il bot
+      run: python src/scraper.py
       env:
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
