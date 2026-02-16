@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 import time
 
 class ScraperFILSE:
-    """Scraper per FILSE - Versione DEFINITIVA con Playwright"""
+    """Scraper per FILSE - Versione DEFINITIVA con Selenium"""
     
     def __init__(self):
         self.nome = "FILSE"
@@ -16,43 +16,64 @@ class ScraperFILSE:
     
     def scrape(self):
         """
-        Scarica bandi da FILSE usando Playwright
+        Scarica bandi da FILSE usando Selenium
         per gestire il caricamento JavaScript
         """
         bandi = []
+        driver = None
         
         try:
-            print(f"🔍 Scansione {self.nome} con Playwright...")
+            print(f"🔍 Scansione {self.nome} con Selenium...")
             
-            with sync_playwright() as p:
-                # Avvia browser headless
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                
-                # Vai alla pagina
-                print(f"📡 Caricamento pagina...")
-                page.goto(self.url_bandi, wait_until='networkidle', timeout=30000)
-                
-                # Aspetta che i bandi si carichino
-                time.sleep(3)
-                
-                # Ottieni l'HTML completo dopo che JS ha caricato tutto
-                html = page.content()
-                browser.close()
+            # Configura Chrome in modalità headless
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            # Avvia il browser
+            driver = webdriver.Chrome(options=chrome_options)
+            
+            # Vai alla pagina
+            print(f"📡 Caricamento pagina...")
+            driver.get(self.url_bandi)
+            
+            # Aspetta che la pagina carichi (fino a 10 secondi)
+            time.sleep(5)
+            
+            # Ottieni l'HTML completo dopo che JS ha caricato tutto
+            html = driver.page_source
             
             # Ora parsa l'HTML con BeautifulSoup
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Cerca i bandi - FILSE usa una struttura specifica
-            # Proviamo diversi selettori
+            # Cerca i bandi - FILSE usa diverse strutture possibili
             articoli = (
                 soup.find_all('div', class_='public-competition-item') or
                 soup.find_all('article', class_='item') or
                 soup.find_all('div', class_='item-list') or
-                soup.find_all('div', class_=['competition-item', 'bando-item'])
+                soup.find_all('div', class_=['competition-item', 'bando-item']) or
+                soup.find_all('article') or
+                soup.find_all('div', class_='item')
             )
             
             print(f"📄 Trovati {len(articoli)} elementi in {self.nome}")
+            
+            # Se non troviamo articoli, stampa l'HTML per debug
+            if len(articoli) == 0:
+                print("⚠️ Nessun articolo trovato. Debug HTML:")
+                # Cerca tutti i div con classe che contiene "item"
+                tutti_div = soup.find_all('div', class_=True)
+                classi_trovate = set()
+                for div in tutti_div[:20]:  # Prime 20 per non spammare
+                    classi = div.get('class', [])
+                    for c in classi:
+                        if 'item' in c.lower() or 'bando' in c.lower() or 'competition' in c.lower():
+                            classi_trovate.add(c)
+                print(f"Classi rilevanti trovate: {classi_trovate}")
             
             for articolo in articoli:
                 try:
@@ -104,7 +125,13 @@ class ScraperFILSE:
             import traceback
             traceback.print_exc()
         
+        finally:
+            # Chiudi sempre il browser
+            if driver:
+                driver.quit()
+        
         return bandi
+        
 class ScraperALFA:
     """Scraper per ALFA - Da implementare"""
     
