@@ -10,6 +10,7 @@ class ScraperFILSE:
         self.nome = "FILSE"
         self.url_base = "https://www.filse.it"
         self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/bandi-attivi/"
+        self.url = self.url_bandi
     
     def scrape(self):
         """
