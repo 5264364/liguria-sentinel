@@ -2,74 +2,86 @@ import requests
 from bs4 import BeautifulSoup
 import hashlib
 from datetime import datetime
+from playwright.sync_api import sync_playwright
+import time
 
 class ScraperFILSE:
-    """Scraper per FILSE - Usa API alternativa"""
+    """Scraper per FILSE - Versione DEFINITIVA con Playwright"""
     
     def __init__(self):
         self.nome = "FILSE"
         self.url_base = "https://www.filse.it"
-        # Usiamo la pagina aggiornamenti che è HTML statico
-        self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/aggiornamenti.html"
+        self.url_bandi = "https://www.filse.it/it/bandi-avvisi-gare/bandi-attivi/publiccompetitions/"
         self.url = self.url_bandi
     
     def scrape(self):
         """
-        Scarica bandi da FILSE aggiornamenti
-        (pagina più semplice senza JS)
+        Scarica bandi da FILSE usando Playwright
+        per gestire il caricamento JavaScript
         """
         bandi = []
         
         try:
-            print(f"🔍 Scansione {self.nome}...")
+            print(f"🔍 Scansione {self.nome} con Playwright...")
             
-            headers = {
-                'User-Agent': 'LiguriaSentinel/1.0'
-            }
+            with sync_playwright() as p:
+                # Avvia browser headless
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                
+                # Vai alla pagina
+                print(f"📡 Caricamento pagina...")
+                page.goto(self.url_bandi, wait_until='networkidle', timeout=30000)
+                
+                # Aspetta che i bandi si carichino
+                time.sleep(3)
+                
+                # Ottieni l'HTML completo dopo che JS ha caricato tutto
+                html = page.content()
+                browser.close()
             
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            # Ora parsa l'HTML con BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
             
-            if response.status_code != 200:
-                print(f"⚠️ {self.nome} - Status: {response.status_code}")
-                return []
+            # Cerca i bandi - FILSE usa una struttura specifica
+            # Proviamo diversi selettori
+            articoli = (
+                soup.find_all('div', class_='public-competition-item') or
+                soup.find_all('article', class_='item') or
+                soup.find_all('div', class_='item-list') or
+                soup.find_all('div', class_=['competition-item', 'bando-item'])
+            )
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            print(f"📄 Trovati {len(articoli)} elementi in {self.nome}")
             
-            # Cerca tutti i link e titoli nella pagina aggiornamenti
-            contenuto = soup.find('div', class_='item-page') or soup.find('main') or soup.find('article')
-            
-            if not contenuto:
-                print(f"⚠️ {self.nome} - Struttura pagina non trovata")
-                return []
-            
-            # Trova tutti i paragrafi e link
-            elementi = contenuto.find_all(['p', 'div', 'h2', 'h3', 'h4'])
-            
-            print(f"📄 Trovati {len(elementi)} elementi in {self.nome}")
-            
-            for elem in elementi:
+            for articolo in articoli:
                 try:
-                    # Cerca link dentro l'elemento
-                    link = elem.find('a')
-                    if not link:
+                    # Cerca titolo
+                    titolo_elem = (
+                        articolo.find('h2') or 
+                        articolo.find('h3') or 
+                        articolo.find('h4') or
+                        articolo.find('a', class_=['title', 'titolo'])
+                    )
+                    
+                    if not titolo_elem:
                         continue
                     
-                    titolo = link.get_text(strip=True)
-                    url = link.get('href', '')
+                    titolo = titolo_elem.get_text(strip=True)
                     
-                    if not titolo or len(titolo) < 10:
+                    # Cerca link
+                    link_elem = articolo.find('a')
+                    if not link_elem:
                         continue
                     
+                    url = link_elem.get('href', '')
                     if url and not url.startswith('http'):
                         url = self.url_base + url
                     
-                    # Filtra solo cose che sembrano bandi
-                    parole_chiave = ['bando', 'avviso', 'contributo', 'finanziamento', 'voucher', 'fondo']
-                    if any(parola in titolo.lower() for parola in parole_chiave):
-                        
-                        # Estrai testo intorno
-                        testo = elem.get_text(strip=True)
-                        
+                    # Estrai tutto il testo
+                    testo = articolo.get_text(strip=True)
+                    
+                    if titolo and url and len(titolo) > 10:
                         bando = {
                             'titolo': titolo,
                             'url': url,
@@ -79,18 +91,20 @@ class ScraperFILSE:
                             'data_trovato': datetime.now().isoformat()
                         }
                         bandi.append(bando)
+                        print(f"  ✓ {titolo[:60]}...")
                 
                 except Exception as e:
+                    print(f"⚠️ Errore parsing elemento: {e}")
                     continue
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
             
         except Exception as e:
             print(f"❌ Errore {self.nome}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return bandi
-
-
 class ScraperALFA:
     """Scraper per ALFA - Da implementare"""
     
