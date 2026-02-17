@@ -3,6 +3,8 @@ Scrapers per diverse fonti di bandi
 """
 
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
@@ -24,7 +26,7 @@ class ScraperFILSEPrivati:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            response = requests.get(self.url_bandi, headers=headers, timeout=15, verify=False)
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
