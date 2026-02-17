@@ -77,19 +77,14 @@ class Database:
         conn.close()
         print("✅ Database completo inizializzato (4 tabelle)")
     
-    def bando_esiste(self, titolo, url):
-        """Controlla se un bando esiste già"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT id FROM bandi 
-            WHERE titolo = ? AND url = ?
-        ''', (titolo, url))
-        
-        risultato = cursor.fetchone()
-        conn.close()
-        return risultato is not None
+    def bando_esiste(self, url):
+    """Controlla se un bando esiste già nel database tramite URL"""
+    conn = sqlite3.connect(self.db_path)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM bandi WHERE url = ?', (url,))
+    result = cursor.fetchone()
+    conn.close()
+    return result is not None
     
     def aggiungi_bando(self, titolo, url, ente, tipo=None, keywords=None):
         """Aggiunge un nuovo bando"""
