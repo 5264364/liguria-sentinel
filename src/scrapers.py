@@ -154,20 +154,36 @@ class ScraperALFA:
     def __init__(self):
         self.nome = "ALFA Liguria"
         self.url_base = "https://www.alfaliguria.it"
-        self.url_bandi = "https://webcache.googleusercontent.com/search?q=cache:https://www.alfaliguria.it/index.php/avvisi-attivi-fse-e-altri-fondi"
+        self.url_bandi = "https://www.alfaliguria.it/index.php/avvisi-attivi-fse-e-altri-fondi"
 
     def scrape(self):
         bandi = []
         try:
             print(f"🔍 Scansione {self.nome}...")
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            import certifi
+            import ssl
+            import socket
+
+            # Test connessione diretta
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'it-IT,it;q=0.9',
+            }
+
+            session = requests.Session()
+            session.verify = certifi.where()
+
+            response = session.get(self.url_bandi, headers=headers, timeout=20)
+
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
                 return []
+
             soup = BeautifulSoup(response.text, 'html.parser')
             link_bandi = soup.find_all('a', href=re.compile(r'/index\.php/avvisi-attivi-fse-e-altri-fondi/\d+'))
             print(f"📄 Trovati {len(link_bandi)} link in {self.nome}")
+
             for link in link_bandi:
                 try:
                     titolo = link.get_text(strip=True)
@@ -191,7 +207,9 @@ class ScraperALFA:
                     print(f"  ✓ {titolo[:70]}...")
                 except Exception:
                     continue
+
             print(f"✅ {self.nome}: {len(bandi)} avvisi estratti")
+
         except Exception as e:
             print(f"❌ Errore {self.nome}: {e}")
         return bandi
