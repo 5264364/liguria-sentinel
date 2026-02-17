@@ -1,6 +1,5 @@
 """
 Scrapers per diverse fonti di bandi
-Ogni scraper è una classe che implementa il metodo scrape()
 """
 
 import requests
@@ -24,10 +23,7 @@ class ScraperFILSEPrivati:
         try:
             print(f"🔍 Scansione {self.nome}...")
             
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             response = requests.get(self.url_bandi, headers=headers, timeout=15)
             
             if response.status_code != 200:
@@ -35,27 +31,21 @@ class ScraperFILSEPrivati:
                 return []
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Cerca SOLO gli elementi <li> che contengono i bandi
             elementi_li = soup.find_all('li')
             
             for elem in elementi_li:
                 testo = elem.get_text(strip=True)
                 
-                # Salta elementi troppo corti o troppo lunghi
                 if len(testo) < 10 or len(testo) > 500:
                     continue
                 
-                # Pulisci il titolo (rimuovi testo dei link tipo "Clicca qui per...")
                 titolo = re.sub(r'Clicca qui per.*', '', testo).strip()
                 titolo = re.sub(r'\s+', ' ', titolo).strip()
                 
                 if len(titolo) < 10:
                     continue
                 
-                # Usa URL univoco per evitare duplicati
-                # Crea un ID univoco basato sul titolo
-                url_univoco = self.url_bandi + "#" + titolo[:50].replace(' ', '-').lower()
+                url_univoco = self.url_bandi + "#" + re.sub(r'[^a-z0-9]', '-', titolo[:50].lower())
                 
                 if url_univoco in url_visti:
                     continue
@@ -77,8 +67,6 @@ class ScraperFILSEPrivati:
             
         except Exception as e:
             print(f"❌ Errore {self.nome}: {e}")
-            import traceback
-            traceback.print_exc()
         
         return bandi
 
@@ -97,52 +85,36 @@ class ScraperFILSEImprese:
         try:
             print(f"🔍 Scansione {self.nome}...")
             
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml',
-                'Accept-Language': 'it-IT,it;q=0.9',
-            }
-            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             response = requests.get(self.url_bandi, headers=headers, timeout=15)
-            response.encoding = 'ISO-8859-1'  # La pagina usa encoding vecchio
+            response.encoding = 'ISO-8859-1'
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
                 return []
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # La pagina ha bandi in <strong> con testo lungo
-            # Seguiti da righe con "dal XX-XX-XXXX al XX-XX-XXXX"
             testo_pagina = soup.get_text(separator='\n')
-            
-            # Dividi per righe
             righe = [r.strip() for r in testo_pagina.split('\n') if r.strip()]
             
             i = 0
             while i < len(righe):
                 riga = righe[i]
                 
-                # Cerca righe lunghe che sembrano titoli di bandi (> 30 char)
-                # e che sono seguite da una riga con date
                 if len(riga) > 30 and i + 1 < len(righe):
                     prossima = righe[i + 1] if i + 1 < len(righe) else ''
                     dopo = righe[i + 2] if i + 2 < len(righe) else ''
-                    
-                    # Controlla se le prossime righe contengono date
                     testo_vicino = prossima + ' ' + dopo
+                    
                     match_date = re.search(
                         r'dal\s+(\d{2}-\d{2}-\d{4})\s*al\s+(\d{2}-\d{2}-\d{4})',
-                        testo_vicino,
-                        re.IGNORECASE
+                        testo_vicino, re.IGNORECASE
                     )
                     
                     if match_date:
                         data_inizio = match_date.group(1)
                         data_fine = match_date.group(2)
-                        
-                        # Crea URL univoco basato sul titolo
-                        url_univoco = self.url_bandi + "#" + riga[:50].replace(' ', '-').lower()
+                        url_univoco = self.url_bandi + "#" + re.sub(r'[^a-z0-9]', '-', riga[:50].lower())
                         
                         bando = {
                             'titolo': riga,
@@ -156,10 +128,85 @@ class ScraperFILSEImprese:
                         
                         bandi.append(bando)
                         print(f"  ✓ {riga[:60]}... (scade {data_fine})")
-                        i += 3  # Salta le righe delle date
+                        i += 3
                         continue
                 
                 i += 1
+            
+            print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
+            
+        except Exception as e:
+            print(f"❌ Errore {self.nome}: {e}")
+        
+        return bandi
+
+
+class ScraperRegione:
+    """Scraper per Regione Liguria - Bandi e Avvisi"""
+    
+    def __init__(self):
+        self.nome = "Regione Liguria"
+        self.url_base = "https://www.regione.liguria.it"
+        self.url_bandi = "https://www.regione.liguria.it/homepage-bandi-e-avvisi/publiccompetitions/"
+    
+    def scrape(self):
+        bandi = []
+        
+        try:
+            print(f"🔍 Scansione {self.nome}...")
+            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                print(f"⚠️ {self.nome} - Status: {response.status_code}")
+                return []
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Regione Liguria ha link con pattern /publiccompetition/XXXX:titolo.html
+            link_bandi = soup.find_all('a', href=re.compile(r'/publiccompetition/\d+:'))
+            
+            print(f"📄 Trovati {len(link_bandi)} link bandi in {self.nome}")
+            
+            for link in link_bandi:
+                try:
+                    titolo = link.get_text(strip=True)
+                    href = link.get('href', '')
+                    
+                    if not titolo or len(titolo) < 10:
+                        continue
+                    
+                    if href.startswith('http'):
+                        url = href
+                    else:
+                        url = self.url_base + href
+                    
+                    # Cerca date nel testo vicino
+                    parent = link.parent
+                    testo = parent.get_text(strip=True) if parent else titolo
+                    
+                    # Cerca data chiusura
+                    match_data = re.search(r'(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})', testo, re.IGNORECASE)
+                    data_scadenza = None
+                    if match_data:
+                        data_scadenza = match_data.group(0)
+                    
+                    bando = {
+                        'titolo': titolo,
+                        'url': url,
+                        'ente': self.nome,
+                        'testo': testo,
+                        'tipo': 'bando',
+                        'data_scadenza': data_scadenza,
+                        'data_trovato': datetime.now().isoformat()
+                    }
+                    
+                    bandi.append(bando)
+                    print(f"  ✓ {titolo[:70]}...")
+                
+                except Exception as e:
+                    continue
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
             
@@ -172,25 +219,10 @@ class ScraperFILSEImprese:
 
 
 class ScraperALFA:
-    """Scraper per ALFA Liguria"""
+    """Scraper per ALFA Liguria - placeholder"""
     
     def __init__(self):
         self.nome = "ALFA"
-        self.url_base = "https://www.alfaliguria.it"
-        self.url_bandi = "https://www.alfaliguria.it/"
-    
-    def scrape(self):
-        print(f"⏭️ {self.nome} - Non ancora implementato")
-        return []
-
-
-class ScraperRegione:
-    """Scraper per Regione Liguria"""
-    
-    def __init__(self):
-        self.nome = "Regione Liguria"
-        self.url_base = "https://www.regione.liguria.it"
-        self.url_bandi = "https://www.regione.liguria.it/homepage-bandi-e-avvisi"
     
     def scrape(self):
         print(f"⏭️ {self.nome} - Non ancora implementato")
