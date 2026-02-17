@@ -5,7 +5,6 @@ Ogni scraper è una classe che implementa il metodo scrape()
 
 import requests
 from bs4 import BeautifulSoup
-import hashlib
 from datetime import datetime
 import re
 
@@ -19,8 +18,8 @@ class ScraperFILSEPrivati:
         self.url_bandi = "https://bandifilse.regione.liguria.it/"
     
     def scrape(self):
-        """Scarica bandi per privati da FILSE"""
         bandi = []
+        url_visti = set()
         
         try:
             print(f"🔍 Scansione {self.nome}...")
@@ -37,61 +36,42 @@ class ScraperFILSEPrivati:
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Cerca tutti gli elementi che contengono bandi
-            # La pagina ha liste puntate e paragrafi con nomi di bandi
-            testo_completo = soup.get_text()
+            # Cerca SOLO gli elementi <li> che contengono i bandi
+            elementi_li = soup.find_all('li')
             
-            # Lista bandi trovati nel testo
-            bandi_noti = [
-                "Nidi Gratis",
-                "Specializzarsi per competere",
-                "attività sportive",
-                "bonus badanti",
-                "baby sitter",
-                "Swim and go",
-                "Progetto di Vita",
-                "Voucher Centri Estivi",
-                "Fondo di garanzia",
-                "Dote Sport"
-            ]
-            
-            # Cerca liste <li> o <p> che contengono i nomi dei bandi
-            elementi = soup.find_all(['li', 'p', 'div'])
-            
-            for elem in elementi:
+            for elem in elementi_li:
                 testo = elem.get_text(strip=True)
                 
-                # Se il testo contiene uno dei bandi noti
-                for bando_nome in bandi_noti:
-                    if bando_nome.lower() in testo.lower() and len(testo) > 15:
-                        # Cerca un link associato
-                        link = elem.find('a')
-                        url = self.url_bandi  # Default alla home se non c'è link specifico
-                        
-                        if link:
-                            href = link.get('href', '')
-                            if href.startswith('http'):
-                                url = href
-                            elif href:
-                                url = self.url_base + href
-                        
-                        # Usa il testo come titolo
-                        titolo = testo[:200] if len(testo) <= 200 else testo[:200] + "..."
-                        
-                        bando = {
-                            'titolo': titolo,
-                            'url': url,
-                            'ente': self.nome,
-                            'testo': testo,
-                            'tipo': 'bando',
-                            'data_trovato': datetime.now().isoformat()
-                        }
-                        
-                        # Evita duplicati nella stessa scansione
-                        if not any(b['titolo'] == titolo for b in bandi):
-                            bandi.append(bando)
-                            print(f"  ✓ {titolo[:60]}...")
-                        break
+                # Salta elementi troppo corti o troppo lunghi
+                if len(testo) < 10 or len(testo) > 500:
+                    continue
+                
+                # Pulisci il titolo (rimuovi testo dei link tipo "Clicca qui per...")
+                titolo = re.sub(r'Clicca qui per.*', '', testo).strip()
+                titolo = re.sub(r'\s+', ' ', titolo).strip()
+                
+                if len(titolo) < 10:
+                    continue
+                
+                # Usa URL univoco per evitare duplicati
+                # Crea un ID univoco basato sul titolo
+                url_univoco = self.url_bandi + "#" + titolo[:50].replace(' ', '-').lower()
+                
+                if url_univoco in url_visti:
+                    continue
+                url_visti.add(url_univoco)
+                
+                bando = {
+                    'titolo': titolo,
+                    'url': url_univoco,
+                    'ente': self.nome,
+                    'testo': testo,
+                    'tipo': 'bando',
+                    'data_trovato': datetime.now().isoformat()
+                }
+                
+                bandi.append(bando)
+                print(f"  ✓ {titolo[:70]}...")
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
             
@@ -112,17 +92,19 @@ class ScraperFILSEImprese:
         self.url_bandi = "https://filseonline.regione.liguria.it/FilseWeb/Home.do"
     
     def scrape(self):
-        """Scarica bandi per imprese da FILSE"""
         bandi = []
         
         try:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Accept-Language': 'it-IT,it;q=0.9',
             }
             
             response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            response.encoding = 'ISO-8859-1'  # La pagina usa encoding vecchio
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
@@ -130,44 +112,54 @@ class ScraperFILSEImprese:
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Cerca la sezione "Bandi attivi"
-            testo_completo = soup.get_text()
+            # La pagina ha bandi in <strong> con testo lungo
+            # Seguiti da righe con "dal XX-XX-XXXX al XX-XX-XXXX"
+            testo_pagina = soup.get_text(separator='\n')
             
-            # Ogni bando è in grassetto seguito da date
-            # Cerchiamo tutti gli elementi in grassetto <strong> o <b>
-            elementi_bold = soup.find_all(['strong', 'b'])
+            # Dividi per righe
+            righe = [r.strip() for r in testo_pagina.split('\n') if r.strip()]
             
-            for elem in elementi_bold:
-                titolo = elem.get_text(strip=True)
+            i = 0
+            while i < len(righe):
+                riga = righe[i]
                 
-                # Filtra solo titoli lunghi (probabilmente bandi)
-                if len(titolo) < 30:
-                    continue
-                
-                # Cerca date nel testo successivo
-                parent = elem.parent
-                if parent:
-                    testo_parent = parent.get_text(strip=True)
+                # Cerca righe lunghe che sembrano titoli di bandi (> 30 char)
+                # e che sono seguite da una riga con date
+                if len(riga) > 30 and i + 1 < len(righe):
+                    prossima = righe[i + 1] if i + 1 < len(righe) else ''
+                    dopo = righe[i + 2] if i + 2 < len(righe) else ''
                     
-                    # Cerca pattern "dal XX-XX-XXXX al XX-XX-XXXX"
-                    match_date = re.search(r'dal\s+(\d{2}-\d{2}-\d{4})\s+al\s+(\d{2}-\d{2}-\d{4})', testo_parent)
+                    # Controlla se le prossime righe contengono date
+                    testo_vicino = prossima + ' ' + dopo
+                    match_date = re.search(
+                        r'dal\s+(\d{2}-\d{2}-\d{4})\s*al\s+(\d{2}-\d{2}-\d{4})',
+                        testo_vicino,
+                        re.IGNORECASE
+                    )
                     
                     if match_date:
                         data_inizio = match_date.group(1)
                         data_fine = match_date.group(2)
                         
+                        # Crea URL univoco basato sul titolo
+                        url_univoco = self.url_bandi + "#" + riga[:50].replace(' ', '-').lower()
+                        
                         bando = {
-                            'titolo': titolo,
-                            'url': self.url_bandi,
+                            'titolo': riga,
+                            'url': url_univoco,
                             'ente': self.nome,
-                            'testo': f"Domande dal {data_inizio} al {data_fine}. {testo_parent[:300]}",
+                            'testo': f"Domande dal {data_inizio} al {data_fine}. {riga}",
                             'tipo': 'bando',
                             'data_scadenza': data_fine,
                             'data_trovato': datetime.now().isoformat()
                         }
                         
                         bandi.append(bando)
-                        print(f"  ✓ {titolo[:60]}... (scade {data_fine})")
+                        print(f"  ✓ {riga[:60]}... (scade {data_fine})")
+                        i += 3  # Salta le righe delle date
+                        continue
+                
+                i += 1
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
             
@@ -188,7 +180,6 @@ class ScraperALFA:
         self.url_bandi = "https://www.alfaliguria.it/"
     
     def scrape(self):
-        """Placeholder - da implementare"""
         print(f"⏭️ {self.nome} - Non ancora implementato")
         return []
 
@@ -202,6 +193,5 @@ class ScraperRegione:
         self.url_bandi = "https://www.regione.liguria.it/homepage-bandi-e-avvisi"
     
     def scrape(self):
-        """Placeholder - da implementare"""
         print(f"⏭️ {self.nome} - Non ancora implementato")
         return []
