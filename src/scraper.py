@@ -1,17 +1,17 @@
 """
 Liguria Sentinel Bot - Main Orchestrator
-Coordina tutti gli scraper e invia notifiche Telegram
 """
 
 import os
+import requests
+from datetime import datetime
 from database import Database
 from scrapers import ScraperFILSEPrivati, ScraperFILSEImprese
 from keywords import filtra_keywords, calcola_score, estrai_keywords_match
-import requests
-import time
 
-def invia_notifica_telegram(bando, db):
-    """Invia notifica Telegram per un bando"""
+
+def invia_notifica_telegram(testo):
+    """Invia messaggio Telegram generico"""
     token = os.environ.get('TELEGRAM_TOKEN')
     chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     
@@ -19,144 +19,146 @@ def invia_notifica_telegram(bando, db):
         print("⚠️ Token o Chat ID Telegram non configurati")
         return
     
-    score = bando.get('score', 0)
-    
-    # Emoji rilevanza
-    if score >= 70:
-        emoji_score = "⭐⭐⭐⭐⭐"
-        priorita = "🔴 ALTA"
-    elif score >= 50:
-        emoji_score = "⭐⭐⭐⭐"
-        priorita = "🟡 MEDIA"
-    else:
-        emoji_score = "⭐⭐⭐"
-        priorita = "🟢 BASSA"
-    
-    messaggio = f"""
-🆕 NUOVO BANDO
-
-{bando['titolo']}
-
-🏢 Ente: {bando['ente']}
-📊 Rilevanza: {score}/100 {emoji_score}
-{priorita}
-
-🔗 {bando['url']}
-🏷️ Keywords: {bando.get('keywords_match', 'N/A')}
-"""
-    
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = {
         'chat_id': chat_id,
-        'text': messaggio,
-        'parse_mode': 'HTML',
+        'text': testo,
         'disable_web_page_preview': True
     }
     
     try:
         response = requests.post(url, json=data, timeout=10)
         if response.status_code == 200:
-            print(f"✅ Notifica inviata per: {bando['titolo'][:50]}...")
+            print(f"✅ Notifica inviata")
         else:
-            print(f"⚠️ Errore invio notifica: {response.status_code}")
+            print(f"⚠️ Errore invio notifica: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ Errore Telegram: {e}")
 
 
-def invia_riepilogo_telegram(totale_trovati, totale_nuovi, totale_db):
-    """Invia riepilogo finale"""
-    token = os.environ.get('TELEGRAM_TOKEN')
-    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+def notifica_nuovo_bando(bando):
+    """Notifica per un singolo bando nuovo"""
+    keywords = bando.get('keywords_match', '') or 'N/A'
+    scadenza = bando.get('data_scadenza', '') or 'N/A'
     
-    if not token or not chat_id:
+    messaggio = f"""🆕 NUOVO BANDO
+
+{bando['titolo']}
+
+🏢 Ente: {bando['ente']}
+📅 Scadenza: {scadenza}
+🏷️ Keywords: {keywords}
+
+🔗 {bando['url']}"""
+    
+    invia_notifica_telegram(messaggio)
+
+
+def invia_riepilogo_quindicinale(db):
+    """Ogni 15 giorni invia TUTTI i bandi nel database"""
+    bandi = db.get_tutti_bandi()
+    
+    if not bandi:
         return
     
-    from datetime import datetime
+    ora = datetime.now().strftime("%d/%m/%Y")
+    
+    messaggio = f"📋 RIEPILOGO QUINDICINALE - {ora}\n"
+    messaggio += f"Tutti i {len(bandi)} bandi attivi nel database:\n\n"
+    
+    for i, bando in enumerate(bandi, 1):
+        scadenza = bando.get('data_scadenza', 'N/A') or 'N/A'
+        messaggio += f"{i}. {bando['titolo'][:80]}\n"
+        messaggio += f"   🏢 {bando['ente']} | 📅 Scade: {scadenza}\n\n"
+    
+    # Telegram ha limite di 4096 caratteri per messaggio
+    # Dividi in più messaggi se necessario
+    if len(messaggio) <= 4096:
+        invia_notifica_telegram(messaggio)
+    else:
+        # Invia a blocchi
+        righe = messaggio.split('\n')
+        chunk = ""
+        for riga in righe:
+            if len(chunk) + len(riga) + 1 > 4000:
+                invia_notifica_telegram(chunk)
+                chunk = riga + '\n'
+            else:
+                chunk += riga + '\n'
+        if chunk:
+            invia_notifica_telegram(chunk)
+    
+    print(f"✅ Riepilogo quindicinale inviato ({len(bandi)} bandi)")
+
+
+def invia_riepilogo_giornaliero(totale_trovati, totale_nuovi, totale_db):
+    """Riepilogo giornaliero"""
     ora = datetime.now().strftime("%d/%m/%Y %H:%M")
     
-    messaggio = f"""
-✅ Scansione Completata
+    if totale_nuovi == 0:
+        messaggio = f"""✅ Scansione completata
 📅 {ora}
 🔍 Bandi analizzati: {totale_trovati}
-🆕 Nuovi bandi: {totale_nuovi}
-📊 Database: {totale_db} bandi totali
-
-Prossimo controllo tra 6 ore.
-"""
+🆕 Nessun bando nuovo
+📊 Database: {totale_db} bandi totali"""
+    else:
+        messaggio = f"""✅ Scansione completata
+📅 {ora}
+🔍 Bandi analizzati: {totale_trovati}
+🆕 Nuovi bandi trovati: {totale_nuovi}
+📊 Database: {totale_db} bandi totali"""
     
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {
-        'chat_id': chat_id,
-        'text': messaggio
-    }
-    
-    try:
-        requests.post(url, json=data, timeout=10)
-    except:
-        pass
+    invia_notifica_telegram(messaggio)
 
 
 def main():
-    """Main execution"""
     print("=" * 60)
     print("🤖 LIGURIA SENTINEL BOT")
     print("=" * 60)
     
-    # Inizializza database
     db = Database()
     
-    # Lista scrapers attivi
     scrapers = [
         ScraperFILSEPrivati(),
         ScraperFILSEImprese(),
-        # ScraperALFA(),  # Attiva dopo
-        # ScraperRegione()  # Attiva dopo
     ]
     
     totale_trovati = 0
     totale_nuovi = 0
     
-    # Esegui tutti gli scraper
     for scraper in scrapers:
         try:
             bandi = scraper.scrape()
             totale_trovati += len(bandi)
             
             for bando in bandi:
-                # Controlla se esiste già
                 if db.bando_esiste(bando['url']):
                     print(f"⏭️ Già presente: {bando['titolo'][:50]}...")
                     continue
                 
-                # Filtra keywords negative
                 if not filtra_keywords(bando['titolo'], bando.get('testo', '')):
-                    print(f"❌ Filtrato (keyword negativa): {bando['titolo'][:50]}...")
+                    print(f"❌ Filtrato: {bando['titolo'][:50]}...")
                     continue
                 
-                # Calcola score
-                score = calcola_score(bando)
-                bando['score'] = score
-                
-                # Estrai keywords match
+                # Calcola keywords ma NON score
                 keywords = estrai_keywords_match(bando['titolo'], bando.get('testo', ''))
                 bando['keywords_match'] = ', '.join(keywords) if keywords else None
+                bando['score'] = 0  # Non usato
                 
-                # Salva in database
                 db.salva_bando(bando)
                 totale_nuovi += 1
                 
-                print(f"💾 Salvato: {bando['titolo'][:50]}... (Score: {score})")
+                print(f"💾 Salvato: {bando['titolo'][:50]}...")
                 
-                # Invia notifica se score >= 40
-                if score >= 40:
-                    invia_notifica_telegram(bando, db)
+                # Notifica TUTTI i bandi nuovi senza score
+                notifica_nuovo_bando(bando)
         
         except Exception as e:
             print(f"❌ Errore scraper {scraper.nome}: {e}")
             import traceback
             traceback.print_exc()
     
-    # Riepilogo finale
+    # Riepilogo giornaliero
     totale_db = db.conta_bandi()
     print("\n" + "=" * 60)
     print(f"✅ Scansione completata!")
@@ -165,8 +167,13 @@ def main():
     print(f"📊 Totale database: {totale_db}")
     print("=" * 60)
     
-    # Invia riepilogo Telegram
-    invia_riepilogo_telegram(totale_trovati, totale_nuovi, totale_db)
+    invia_riepilogo_giornaliero(totale_trovati, totale_nuovi, totale_db)
+    
+    # Riepilogo quindicinale (ogni 1° e 16° del mese)
+    giorno = datetime.now().day
+    if giorno in [1, 16]:
+        print("📋 Invio riepilogo quindicinale...")
+        invia_riepilogo_quindicinale(db)
 
 
 if __name__ == "__main__":
