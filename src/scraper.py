@@ -6,7 +6,7 @@ import os
 import requests
 from datetime import datetime
 from database import Database
-from scrapers import ScraperFILSEPrivati, ScraperFILSEImprese, ScraperRegione
+from scrapers import ScraperFILSEPrivati, ScraperFILSEImprese, ScraperRegione, ScraperALFA
 from keywords import filtra_keywords, calcola_score, estrai_keywords_match
 
 
@@ -114,6 +114,7 @@ def main():
         ScraperFILSEPrivati(),
         ScraperFILSEImprese(),
         ScraperRegione(),
+        ScraperALFA(),
     ]
     
     totale_trovati = 0
