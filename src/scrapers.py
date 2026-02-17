@@ -7,7 +7,18 @@ import urllib3
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
 
+class SSLAdapter(HTTPAdapter):
+    """Adapter che bypassa completamente la verifica SSL"""
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        kwargs['ssl_context'] = ctx
+        return super().init_poolmanager(*args, **kwargs)
 # Disabilita warning SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -231,7 +242,9 @@ class ScraperALFA:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15, verify=False)
+            session = requests.Session()
+            session.mount('https://', SSLAdapter())
+            response = session.get(self.url_bandi, headers=headers, timeout=15)
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
