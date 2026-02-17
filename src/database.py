@@ -162,4 +162,14 @@ class Database:
         return {
             'per_ente': per_ente,
             'tot_controlli': tot_controlli
+
+       def get_tutti_bandi(self):
+    """Ritorna tutti i bandi nel database"""
+    conn = sqlite3.connect(self.db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM bandi ORDER BY data_trovato DESC')
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]     
         }
