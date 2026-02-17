@@ -219,11 +219,79 @@ class ScraperRegione:
 
 
 class ScraperALFA:
-    """Scraper per ALFA Liguria - placeholder"""
+    """Scraper per ALFA Liguria - Avvisi FSE e altri fondi"""
     
     def __init__(self):
-        self.nome = "ALFA"
+        self.nome = "ALFA Liguria"
+        self.url_base = "https://www.alfaliguria.it"
+        self.url_bandi = "https://www.alfaliguria.it/index.php/avvisi-attivi-fse-e-altri-fondi"
     
     def scrape(self):
-        print(f"⏭️ {self.nome} - Non ancora implementato")
-        return []
+        bandi = []
+        
+        try:
+            print(f"🔍 Scansione {self.nome}...")
+            
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                print(f"⚠️ {self.nome} - Status: {response.status_code}")
+                return []
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # ALFA ha link con pattern /index.php/avvisi-attivi-fse-e-altri-fondi/NNN-titolo
+            link_bandi = soup.find_all('a', href=re.compile(r'/index\.php/avvisi-attivi-fse-e-altri-fondi/\d+'))
+            
+            print(f"📄 Trovati {len(link_bandi)} link in {self.nome}")
+            
+            for link in link_bandi:
+                try:
+                    titolo = link.get_text(strip=True)
+                    href = link.get('href', '')
+                    
+                    if not titolo or len(titolo) < 10:
+                        continue
+                    
+                    # Salta link di navigazione/menu
+                    if titolo.lower() in ['avvisi attivi fse e altri fondi', 'vai alla pagina dedicata']:
+                        continue
+                    
+                    url = self.url_base + href if not href.startswith('http') else href
+                    
+                    # Cerca testo vicino per date
+                    parent = link.parent
+                    testo = parent.get_text(strip=True) if parent else titolo
+                    
+                    # Cerca scadenza nel testo
+                    match_data = re.search(
+                        r'(\d{1,2})[/\.](\d{1,2})[/\.](\d{4})',
+                        testo
+                    )
+                    data_scadenza = match_data.group(0) if match_data else None
+                    
+                    bando = {
+                        'titolo': titolo,
+                        'url': url,
+                        'ente': self.nome,
+                        'testo': testo,
+                        'tipo': 'avviso FSE',
+                        'data_scadenza': data_scadenza,
+                        'data_trovato': datetime.now().isoformat()
+                    }
+                    
+                    bandi.append(bando)
+                    print(f"  ✓ {titolo[:70]}...")
+                
+                except Exception:
+                    continue
+            
+            print(f"✅ {self.nome}: {len(bandi)} avvisi estratti")
+            
+        except Exception as e:
+            print(f"❌ Errore {self.nome}: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return bandi
