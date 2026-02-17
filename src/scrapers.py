@@ -4,10 +4,12 @@ Scrapers per diverse fonti di bandi
 
 import requests
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+
+# Disabilita warning SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ScraperFILSEPrivati:
@@ -88,7 +90,7 @@ class ScraperFILSEImprese:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            response = requests.get(self.url_bandi, headers=headers, timeout=15, verify=False)
             response.encoding = 'ISO-8859-1'
             
             if response.status_code != 200:
@@ -158,15 +160,13 @@ class ScraperRegione:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            response = requests.get(self.url_bandi, headers=headers, timeout=15, verify=False)
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
                 return []
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Regione Liguria ha link con pattern /publiccompetition/XXXX:titolo.html
             link_bandi = soup.find_all('a', href=re.compile(r'/publiccompetition/\d+:'))
             
             print(f"📄 Trovati {len(link_bandi)} link bandi in {self.nome}")
@@ -179,20 +179,16 @@ class ScraperRegione:
                     if not titolo or len(titolo) < 10:
                         continue
                     
-                    if href.startswith('http'):
-                        url = href
-                    else:
-                        url = self.url_base + href
+                    url = self.url_base + href if not href.startswith('http') else href
                     
-                    # Cerca date nel testo vicino
                     parent = link.parent
                     testo = parent.get_text(strip=True) if parent else titolo
                     
-                    # Cerca data chiusura
-                    match_data = re.search(r'(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})', testo, re.IGNORECASE)
-                    data_scadenza = None
-                    if match_data:
-                        data_scadenza = match_data.group(0)
+                    match_data = re.search(
+                        r'(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})',
+                        testo, re.IGNORECASE
+                    )
+                    data_scadenza = match_data.group(0) if match_data else None
                     
                     bando = {
                         'titolo': titolo,
@@ -207,7 +203,7 @@ class ScraperRegione:
                     bandi.append(bando)
                     print(f"  ✓ {titolo[:70]}...")
                 
-                except Exception as e:
+                except Exception:
                     continue
             
             print(f"✅ {self.nome}: {len(bandi)} bandi estratti")
@@ -235,15 +231,13 @@ class ScraperALFA:
             print(f"🔍 Scansione {self.nome}...")
             
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(self.url_bandi, headers=headers, timeout=15)
+            response = requests.get(self.url_bandi, headers=headers, timeout=15, verify=False)
             
             if response.status_code != 200:
                 print(f"⚠️ {self.nome} - Status: {response.status_code}")
                 return []
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # ALFA ha link con pattern /index.php/avvisi-attivi-fse-e-altri-fondi/NNN-titolo
             link_bandi = soup.find_all('a', href=re.compile(r'/index\.php/avvisi-attivi-fse-e-altri-fondi/\d+'))
             
             print(f"📄 Trovati {len(link_bandi)} link in {self.nome}")
@@ -256,21 +250,15 @@ class ScraperALFA:
                     if not titolo or len(titolo) < 10:
                         continue
                     
-                    # Salta link di navigazione/menu
                     if titolo.lower() in ['avvisi attivi fse e altri fondi', 'vai alla pagina dedicata']:
                         continue
                     
                     url = self.url_base + href if not href.startswith('http') else href
                     
-                    # Cerca testo vicino per date
                     parent = link.parent
                     testo = parent.get_text(strip=True) if parent else titolo
                     
-                    # Cerca scadenza nel testo
-                    match_data = re.search(
-                        r'(\d{1,2})[/\.](\d{1,2})[/\.](\d{4})',
-                        testo
-                    )
+                    match_data = re.search(r'(\d{1,2})[/\.](\d{1,2})[/\.](\d{4})', testo)
                     data_scadenza = match_data.group(0) if match_data else None
                     
                     bando = {
